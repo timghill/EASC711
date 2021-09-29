@@ -18,49 +18,63 @@ class Model:
     _default_pdf = scipy.stats.norm().rvs
     _default_jdf = scipy.stats.norm().pdf
     def __init__(self, jumping_model=_default_jdf, sample_pdf=_default_pdf):
-        """Initialize Model instance
+        """
+Initialize Model instance
 
-        Model attributes control the details of the MCMC method:
-         * `jumping_model` (jumping distribution function): Jumping
-            distribution used to draw new samples. Function with call
-            signature:
+Model attributes control the details of the MCMC method:
+ * `jumping_model` (jumping distribution function): Jumping
+    distribution used to draw new samples. Function with call
+    signature:
 
-            ```python
-            theta_prop = jumping_model()
-            ```
+    ```python
+    theta_prop = jumping_model()
+    ```
 
-         * `sample_pdf`: Sample probability density function. Function with
-            call signature:
+ * `sample_pdf`: Sample probability density function. Function with
+    call signature:
 
-            ```python
-            prob_theta = sample_pdf(theta)
-            ```
+    ```python
+    prob_theta = sample_pdf(theta)
+    ```
 
-        At each step in the MCMC chain, let the current variable value be
-        theta. Then, a new proposed value is drawn from the jumping
-        distribution:
+At each step in the MCMC chain, let the current variable value be
+theta. Then, a new proposed value is drawn from the jumping
+distribution:
 
-        ```python
-        theta_prop = self.jumping_model()
-        ```
+```python
+theta_prop = self.jumping_model()
+```
 
-        The probability of the original and proposed values are calculated:
+The probability of the original and proposed values are calculated:
 
-        ```python
-        p_theta = self.prob_model(theta)
-        p_prop = self.prob_model(theta_prop)
+```python
+p_theta = self.prob_model(theta)
+p_prop = self.prob_model(theta_prop)
 
-        accep = min(1, p_prop/p_theta)
-        ```
+accep = min(1, p_prop/p_theta)
+```
 
-        And the new value (`theta_prop`) is accepted with a probability
-        equal to the acceptance ratio
+And the new value (`theta_prop`) is accepted with a probability
+equal to the acceptance ratio
         """
         self.jumping_model = jumping_model
         self.sample_pdf = pdf
         self._uniform = scipy.stats.uniform()
 
     def step(self, theta):
+        """Take one step with Metropolis-Hastings algorithm
+
+        Arguments:
+
+         * `theta`: Current step
+
+        Generates a random proposed candidate from the `self.jumping_model`
+        distribution, and accepts the candidate according to its
+        acceptance ratio (ratio of probability of new and current
+        steps)
+
+        Returns new accepted value
+        """
         # Generate random proposed candidate
         theta_prop = self.jumping_model()
 
@@ -82,6 +96,21 @@ class Model:
         return theta_new
 
     def chain(self, theta0, steps=1e3, discard=0):
+        """Generate a complete Markov Chain using Metropolis-Hastings
+        algorithm
+
+        Arguments:
+
+         * `theta0`: Starting sample
+         * `steps`: Total number of steps to take
+         * `discard`: Number of steps to discard from the beginning of
+            the chain
+
+        Returns:
+
+         * `samples`: `steps - discard`-length array containing
+            samples in the chain
+        """
         # Enforce type int
         steps = int(steps); discard = int(discard)
 
@@ -98,6 +127,18 @@ class Model:
         return samples
 
     def calculate_pdf(self, samples, eval=None, **kde_params):
+        """Estimate probability density function from MCMC chain.
+
+        This is a simple wrapper to `scipy.stats.gaussian_KDE` function
+
+        Arguments:
+
+         * `samples`: MCMC samples (e.g. from `chain` function)
+         * `eval`: Points to evaluate the PDF at. If `None`, returns
+            the `scipy.stats.gaussian_KDE` instance
+         * `kde_params`: Additional parameters to pass to
+            `scipy.stats.gaussian_KDE function`
+        """
         kde = scipy.stats.gaussian_KDE(samples, **kde_params)
         if eval:
             return kde(eval)
