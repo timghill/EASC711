@@ -105,7 +105,12 @@ def conc_ln_likelihood(x, y, theta, p):
 
     sigma2 = sigma2_estimate(y, mu, Rinv)
 
-    return float(0.5*n*np.log(sigma2) + 0.5*np.log(np.linalg.det(Rmat)))
+    l = float(0.5*n*np.log(sigma2) + 0.5*np.log(np.linalg.det(Rmat)))
+    if np.isnan(l) or np.isinf(l):
+        L = 0
+    else:
+        L = l
+    return L
 
     # pref = (2*np.pi)**(n/2)*(sigma2)**(n/2)*np.abs(np.linalg.det(Rmat))**(0.5)
     # arg = np.matmul((y - muvec).T, np.matmul(Rinv, (y - muvec)))/(2*sigma2)
