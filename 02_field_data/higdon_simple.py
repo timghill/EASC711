@@ -5,8 +5,9 @@ import scipy.stats
 import scipy.optimize
 
 # True parameter values
-zeta = 0.5  # The only varying parameter
+zeta = 0.625  # The only varying parameter
 w0 = 2*np.pi
+measure_sigma = 0.1
 
 def damped_sho_rhs(t, y, zeta, w0):
     return np.array([y[1], -w0**2*y[0] - 2*zeta*w0*y[1]])
@@ -28,35 +29,34 @@ fig, ax = plt.subplots()
 x = np.array([0.2, 0.3, 0.5, 0.8])
 sol_exact = scipy.integrate.solve_ivp(objective, t_span, y0, t_eval=x)
 y_exact = sol_exact.y[0]
-measure_sigma = 0.1
 np.random.seed(1234567)
+
+# FUDGE FACTOR 0.25
 y = y_exact + np.random.normal(scale=measure_sigma, size=x.shape)
 
 
-def eta(t):
-    object = lambda t, y: damped_sho_rhs(t, y, t, w0)
-    tspan = [np.min(x), np.max(x)]
+def eta(theta, t_eval=x):
+    object = lambda t, y: damped_sho_rhs(t, y, theta, w0)
+    tspan = [np.min(t_eval), np.max(t_eval)]
     y0 = np.array([1, w0])
-    ss = scipy.integrate.solve_ivp(object, tspan, y0, t_eval=x)
+    ss = scipy.integrate.solve_ivp(object, tspan, y0, t_eval=t_eval)
     return ss.y[0]
 
-# Prior parameter distribution
-#  zeta ~ N(0.5, 0.1)
-#  w0 ~ N(2*pi, pi\8)
-
 N_priors = 15
-zeta_prior = np.random.normal(loc=0.5, scale=0.1, size=(N_priors))
+zeta_mean = 0.5
+zeta_sd = 0.3
+prior_mean = zeta_mean
+prior_sd = 0.4
+zeta_prior = np.random.normal(loc=zeta_mean, scale=zeta_sd, size=(N_priors))
 # w0_prior = np.random.normal(loc=2*np.pi, scale=np.pi/8, size=(N_priors))
 y_prior = np.zeros((N_priors, len(t_eval)))
 
 for i in range(N_priors):
-    obji = lambda t, y: damped_sho_rhs(t, y, zeta_prior[i], w0)
-    soli = scipy.integrate.solve_ivp(obji, t_span, y0, t_eval=t_eval)
-    y_prior[i] = soli.y[0]
+    y_prior[i] = eta(zeta_prior[i], t_eval=t_eval)
 
 ax.set_xlabel('x')
 ax.set_ylabel('y, $\\eta(x, t)$')
-ax.plot(soli.t, y_prior.T, color=(0.5, 0.5, 0.5, 0.5))
+ax.plot(t_eval, y_prior.T, color=(0.5, 0.5, 0.5, 0.5))
 ax.plot(sol.t, sol.y[0, :], label='Exact', linewidth=2, color='r')
 ax.errorbar(x, y, yerr=1.96*measure_sigma, fmt='k.',
     ecolor='k', label='Samples + 95%')
@@ -66,18 +66,19 @@ ax.set_ylim([-0.5, 1.25])
 # More meaty statistics: define sampling model for y, Likelihood of y
 # given eta(theta)
 
-def likelihood(y, eta):
-    return np.exp(-0.5*np.linalg.norm(y - eta)/(measure_sigma**2))
+def likelihood(y, eta_vals):
+    # Calculate likelihood of measurements y given simulator output eta
+    return np.exp(-0.5*np.linalg.norm(y - eta_vals)**2/(measure_sigma**2))
 
 def posterior(theta, y):
     eta_star = eta(theta)
-    zeta_rv = scipy.stats.norm(loc=0.5, scale=0.1)
-    prob_theta = zeta_rv.pdf(theta)
-    return likelihood(y, eta_star)*prob_theta
+    # zeta_rv = scipy.stats.norm(loc=zeta_mean, scale=prior_sd)
+    # prob_theta = zeta_rv.pdf(theta)
+    return likelihood(y, eta_star)*np.exp(-0.5*(theta - prior_mean)**2/prior_sd**2)
 
 
 def MH_step(theta_t):
-    theta_star = np.random.normal(loc=0.5, scale=5*0.1)
+    theta_star = np.random.normal(loc=theta_t, scale=0.5)
     p_theta_t = posterior(theta_t, y)
     p_theta_s = posterior(theta_star, y)
     alpha = np.min([1, p_theta_s/p_theta_t])
@@ -85,7 +86,7 @@ def MH_step(theta_t):
     rng = np.random.default_rng()
     rv = rng.uniform()
     # print(rv)
-    if rv<alpha:
+    if rv<=alpha:
         theta_new = theta_star
     else:
         theta_new = theta_t
@@ -95,23 +96,31 @@ def MH_step(theta_t):
 # print(MH_step(0.6))
 MCMC_steps = int(1e4)
 MCMC_samples = np.zeros(int(MCMC_steps))
-theta = 0.5
+theta = 0.6
 MCMC_samples[0] = theta
-for i in range(MCMC_steps):
-    theta = MH_step(theta)
-    MCMC_samples[i] = theta
+for i in range(1, MCMC_steps):
+    MCMC_samples[i] = MH_step(MCMC_samples[i-1])
 
-fig2, ax2 = plt.subplots()
-ax2.plot(MCMC_samples)
+# fig2, ax2 = plt.subplots()
+# ax2.plot(MCMC_samples)
 
-MCMC_subsample = MCMC_samples[int(5e3):]
+MCMC_subsample = MCMC_samples[int(MCMC_steps/5):]
 fig3, ax3 = plt.subplots()
 # ax3.hist(MCMC_subsample)
 
 KDE = scipy.stats.gaussian_kde(MCMC_subsample)
-pos = np.linspace(0, 1, 101)
+pos = np.linspace(0, 2, 101)
 pdist = KDE(pos)
-ax3.plot(pos, pdist)
+ax3.plot(pos, pdist, label='MCMC Posterior')
+zeta_rv = scipy.stats.norm(zeta_mean, zeta_sd)
+ax3.plot(pos, zeta_rv.pdf(pos), label='Prior')
+ax3.legend()
+likeli = np.zeros(pos.shape)
+for j in range(len(pos)):
+    eta_star = eta(pos[j])
+    likeli[j] = likelihood(y, eta_star)
+
+ax3.plot(pos, likeli/np.max(likeli), label='Likelihood')
 
 # Calculate 15th percentile
 percentiles = np.arange(0.15, 0.9, 0.05)
