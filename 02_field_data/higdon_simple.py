@@ -106,24 +106,21 @@ zeta_rv = scipy.stats.norm(prior_mean, prior_sd)
 ax3.plot(pos, zeta_rv.pdf(pos), label='Prior')
 ax3.legend()
 
-percentile_locs = np.zeros(percentiles.shape)
-# Use normal percentiles to estimate locations
+theta_percentiles = np.zeros(percentiles.shape)
 emp_sigma = np.std(MCMC_subsample)
 emp_mean = np.mean(MCMC_subsample)
+emp_norm = scipy.stats.norm(loc=emp_mean, scale=emp_sigma)
 print(emp_sigma)
 print(emp_mean)
 for i, p in enumerate(percentiles):
     min_obj = lambda x: np.abs(KDE.integrate_box_1d(0, x) - p)**2
 
-    x0 = scipy.stats.norm(loc=emp_mean, scale=emp_sigma).ppf(p)
-    print(x0)
-
+    # Use normal percentiles to estimate locations
+    x0 = emp_norm.ppf(p)
     res = scipy.optimize.minimize(min_obj, x0, tol=1e-12)
-    # print(res.x)
-    percentile_locs[i] = res.x
-    ax3.axvline(res.x, color='k')
 
-theta_percentiles = percentile_locs
+    theta_percentiles[i] = res.x
+    ax3.axvline(res.x, color='k')
 
 # Figure 4: Eta with posterior parameter values
 fig4, ax4 = plt.subplots()
