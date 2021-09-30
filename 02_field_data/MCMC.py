@@ -27,8 +27,11 @@ class Model:
             signature:
 
             ```python
-            theta_prop = jumping_model()
+            theta_prop = jumping_model(theta)
             ```
+
+            where `theta` is the current step in the Metropolis-Hastings
+            algorithm
 
          * `sample_pdf`: Sample probability density function. Function with
             call signature:
@@ -75,11 +78,6 @@ class Model:
 
         Returns new accepted value
         """
-        # RV = scipy.stats.norm(loc=theta, scale=0.3)
-        # theta_prop = RV.rvs()
-
-        # theta_prop = np.random.normal(loc=theta, scale=0.3)
-
         # Generate random proposed candidate
         theta_rv = self.jumping_model(theta)
         theta_prop = theta_rv.rvs()
