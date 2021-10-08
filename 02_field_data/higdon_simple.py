@@ -35,7 +35,7 @@ def eta(theta, t_eval=x):
     """Calculate function eta at samples x with parameter value theta.
     """
     object = lambda t, y: damped_sho_rhs(t, y, theta, w0)
-    tspan = [np.min(t_eval), np.max(t_eval)]
+    tspan = [0, np.max(t_eval)]
     y0 = np.array([1, w0])
     ss = scipy.integrate.solve_ivp(object, tspan, y0, t_eval=t_eval)
     return ss.y[0]
@@ -48,7 +48,7 @@ t_eval = np.linspace(0, 1, 49)
 y0 = np.array([1, w0])
 objective = lambda t, y: damped_sho_rhs(t, y, zeta, w0)
 sol = scipy.integrate.solve_ivp(objective, t_span, y0, t_eval=t_eval)
-fig, ax = plt.subplots()
+fig, (ax, ax4) = plt.subplots(ncols=2, figsize=(8, 4))
 
 # ----------------------------------------------------------------------
 sol_exact = scipy.integrate.solve_ivp(objective, t_span, y0, t_eval=x)
@@ -72,7 +72,8 @@ ax.plot(t_eval, y_prior.T, color=(0.5, 0.5, 0.5, 0.5))
 ax.plot(sol.t, sol.y[0, :], label='Exact', linewidth=2, color='r')
 ax.errorbar(x, y, yerr=1.96*measure_sigma, fmt='k.',
     ecolor='k', label='Samples + 95%')
-ax.legend()
+# ax.legend()
+ax.text(0.05, 0.9, 'a', transform=ax.transAxes)
 ax.set_ylim([-1, 1.5])
 
 # More meaty statistics: define sampling model for y, Likelihood of y
@@ -110,8 +111,6 @@ theta_percentiles = np.zeros(percentiles.shape)
 emp_sigma = np.std(MCMC_subsample)
 emp_mean = np.mean(MCMC_subsample)
 emp_norm = scipy.stats.norm(loc=emp_mean, scale=emp_sigma)
-print(emp_sigma)
-print(emp_mean)
 for i, p in enumerate(percentiles):
     min_obj = lambda x: np.abs(KDE.integrate_box_1d(0, x) - p)**2
 
@@ -123,7 +122,7 @@ for i, p in enumerate(percentiles):
     ax3.axvline(res.x, color='k')
 
 # Figure 4: Eta with posterior parameter values
-fig4, ax4 = plt.subplots()
+# fig4, ax4 = plt.subplots()
 for k in range(len(percentiles)):
     object = lambda t, y: damped_sho_rhs(t, y, theta_percentiles[k], w0)
     y0 = np.array([1, w0])
@@ -133,9 +132,25 @@ for k in range(len(percentiles)):
     ax4.plot(t_eval, yk, color=(0.5, 0.5, 0.5, 0.5))
 
 y_mean = eta(emp_mean, t_eval=t_eval)
-ax4.plot(t_eval, y_mean, 'r')
+ax4.plot(t_eval, y_mean, 'b', label='Mean')
 
 ax4.errorbar(x, y, yerr=1.96*measure_sigma, fmt='k.',
     ecolor='k', label='Samples + 95%')
 ax4.set_ylim([-1, 1.5])
+ax4.text(0.05, 0.9, 'b', transform=ax4.transAxes)
+
+ax_inset = ax4.inset_axes([0.1, 0.1, 0.5, 0.3], zorder=1)
+ax_inset.plot(pos, zeta_rv.pdf(pos))
+ax_inset.plot(pos, pdist)
+# ax_inset.set_xlabel('$\\theta$')
+# ax_inset.set_ylabel('$\\pi(\\theta)$')
+ax_inset.spines['top'].set_visible(False)
+ax_inset.spines['right'].set_visible(False)
+ax_inset.spines['left'].set_visible(False)
+ax_inset.get_yaxis().set_ticks([])
+ax_inset.set_xlim([0, 1.5])
+ax_inset.get_xaxis().set_ticks([])
+
 plt.show()
+
+fig.savefig('higdon_simple.png', dpi=600)

@@ -79,8 +79,9 @@ class Model:
         Returns new accepted value
         """
         # Generate random proposed candidate
-        theta_rv = self.jumping_model(theta)
-        theta_prop = theta_rv.rvs()
+        # theta_rv = self.jumping_model(theta)
+        # theta_prop = theta_rv.rvs()
+        theta_prop = self.jumping_model(theta)
 
         # Calculate probability of old and new guesses
         p_theta = self.sample_pdf(theta)
@@ -118,7 +119,9 @@ class Model:
         # Enforce type int
         steps = int(steps); discard = int(discard)
 
+        # samples = np.zeros((steps - discard, len(theta0)))
         samples = np.zeros(steps - discard)
+        # print(samples.shape)
         theta = theta0
         # Steps where we forget the result
         for i in range(discard):
