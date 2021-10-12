@@ -31,20 +31,22 @@ prior_mean = 0.6
 prior_sd = 0.2
 
 # Measurement points
-x = np.array([0.2, 0.275, 0.489, 0.8])
+x = np.array([0.2, 0.3, 0.5, 0.8])
 
 # Simulator points
 np.random.seed(199)
-X = pyDOE.lhs(2, samples=15, criterion='cm', iterations=100)
+X = pyDOE.lhs(2, samples=10, criterion='cm', iterations=100)
 
 # Scale second coordinate appropriately
 theta_prior_rv = scipy.stats.norm(loc=prior_mean, scale=prior_sd)
 X[:,1] = theta_prior_rv.ppf(X[:,1])
 
+t_eval = np.linspace(0, 1, 49)
+percentiles = np.arange(0.05, 1, 0.05)
 
 # MCMC parameters
-MCMC_steps = int(5e3)
-MCMC_discard = int(1e3)
+MCMC_steps = int(1e4)
+MCMC_discard = int(2e3)
 
 nobs = len(x)
 nsim = X.shape[0]
@@ -67,6 +69,7 @@ def eta(theta, t_eval=x):
 # ----------------------------------------------------------------------
 # Measured values
 y_exact = eta(zeta, t_eval=x)
+np.random.seed(10)
 y = y_exact + np.random.normal(loc=0, scale=measure_sigma, size=x.shape)
 
 # Simulator values
@@ -87,12 +90,29 @@ y_simulator = y_simulator/sim_std
 y = y/sim_std
 y_exact = y_exact/sim_std
 
-# Plot measurements and samples
-fig, ax = plt.subplots()
-ax.plot(x, y, 'bo')
+def eta_scaled(theta, t_eval=x):
+    Y = eta(theta, t_eval=t_eval)
+    return (Y - sim_mean)/sim_std
+
+fig, (ax, ax4) = plt.subplots(ncols=2, figsize=(8, 4))
+
+prior_rv = scipy.stats.norm(loc=prior_mean, scale=prior_sd)
+theta_prior = [prior_rv.ppf(p) for p in percentiles]
+y_prior = np.zeros((len(percentiles), len(t_eval)))
+for i in range(len(percentiles)):
+    y_prior[i] = eta_scaled(theta_prior[i], t_eval=t_eval)
+
+# ax.plot(x, y, 'bo')
+ax.plot(t_eval, y_prior.T, color=(0.5, 0.5, 0.5, 0.5))
+ax.errorbar(x, y, yerr=1.96*measure_sigma, fmt='k.',
+    ecolor='k')
 ax.plot(X[:, 0], y_simulator, 'ko')
-ax.set_title('Measurements and simulations')
-fig.savefig('higdon_median_samples.png', dpi=600)
+# ax.set_title('Measurements and simulations')
+ax.plot(t_eval, eta_scaled(zeta, t_eval=t_eval), color='r')
+ax.text(0.05, 0.9, 'a', transform=ax.transAxes)
+
+# plt.show()
+# fig.savefig('higdon_median_samples.png', dpi=600)
 
 # ----------------------------------------------------------------------
 # The next three functions (covariance, covariance_mat, L) provide the
@@ -208,9 +228,10 @@ def jumping_model(para_vec):
     theta = para_vec[0]
     lambd = para_vec[1]
     beta = para_vec[2:]
-    diags = (0.25**2)*np.ones(4)
-    diags[0] = (0.2)**2
-    diags[1] = (0.2)**2
+    diags = (0.15**2)*np.ones(4)
+    diags[0] = (0.1)**2
+    # diags[1] = (0.2)**2
+    diags[3] = 0.5**2
 
     jumping_cov = np.diag(diags)
     para_new = scipy.stats.multivariate_normal.rvs(para_vec, cov=jumping_cov)
@@ -238,17 +259,40 @@ for i in range(MCMC_steps):
 # Estimate PDF
 KDE_model = scipy.stats.gaussian_kde(mv_chain.T)
 
+post_zeta = np.mean(mv_chain[:, 0])
+print('Posterior damping:', post_zeta)
+
+theta_percentiles = np.zeros(percentiles.shape)
+for i, p in enumerate(percentiles):
+    # min_obj = lambda x: np.abs(KDE_model.integrate_box_1d(0, x) - p)**2
+
+    # Use normal percentiles to estimate locations
+    # x0 = emp_norm.ppf(p)
+    # res = scipy.optimize.minimize(min_obj, x0, tol=1e-12)
+    theta_percentiles[i] = np.percentile(mv_chain[:,0], 100*p)
+    # theta_percentiles[i] = res.x
+    # ax3.axvline(res.x, color='k')
+    ax4.plot(t_eval, eta_scaled(theta_percentiles[i], t_eval=t_eval),
+    color=(0.5, 0.5, 0.5, 0.5))
+ax4.plot(t_eval, eta_scaled(post_zeta, t_eval=t_eval), color='b')
+ax4.errorbar(x, y, yerr=1.96*measure_sigma, fmt='k.',
+    ecolor='k')
+ax4.set_ylim(ax.get_ylim())
+ax_inset = ax4.inset_axes([0.1, 0.1, 0.5, 0.3], zorder=1)
+ax4.text(0.05, 0.9, 'b', transform=ax4.transAxes)
+
+
 print('Mean values:', np.mean(mv_chain, axis=0))
 
 # Plot pdfs
-fig, ax = plt.subplots()
+figmc, ax = plt.subplots()
 ax.plot(mv_chain[:, 0])
 ax.plot(mv_chain[:, 1])
 ax.plot(mv_chain[:, 2])
 ax.plot(mv_chain[:, 3])
 # plt.show()
 
-fig, axes = plt.subplots(figsize=(8, 8), nrows=2, ncols=2)
+fig2, axes = plt.subplots(figsize=(8, 8), nrows=2, ncols=2)
 pp_theta = np.linspace(0, 2, 101)
 pp_lambda = np.linspace(0, 2, 101)
 pp_beta1 = np.linspace(1, 10, 101)
@@ -280,6 +324,16 @@ axes[0][0].plot(pp_theta, prior_theta(pp_theta))
 axes[0][0].plot(pp_theta, post_theta)
 axes[0][0].set_xlabel('$\\theta$')
 
+ax_inset.plot(pp_theta, prior_theta(pp_theta))
+ax_inset.plot(pp_theta, post_theta)
+ax_inset.spines['top'].set_visible(False)
+ax_inset.spines['right'].set_visible(False)
+ax_inset.spines['left'].set_visible(False)
+ax_inset.get_yaxis().set_ticks([])
+ax_inset.set_xlim([0, 1.5])
+ax_inset.get_xaxis().set_ticks([])
+fig.savefig('higdon_medium.png', dpi=600)
+
 axes[0][1].plot(pp_lambda, prior_lambd(pp_lambda))
 axes[0][1].plot(pp_lambda, post_lambda)
 axes[0][1].set_xlabel('$\\lambda$')
@@ -294,5 +348,7 @@ axes[1][0].set_xlabel('$\\beta_1$')
 axes[1][1].plot(pp_beta2, post_beta2)
 axes[1][1].set_xlabel('$\\beta_2$')
 
-fig.suptitle('Posterior distributions')
+fig2.suptitle('Posterior distributions')
+
+
 plt.show()
