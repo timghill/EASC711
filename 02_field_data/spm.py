@@ -40,6 +40,7 @@ def R(x, theta, p):
     for i in range(n):
         for j in range(n):
             Rmat[i, j] = corr(x[i], x[j], theta, p)
+    Rmat = 0.5*(Rmat + Rmat.T)
     return Rmat
 
 def mu_estimate(y, Rinv):
@@ -87,41 +88,96 @@ def likelihood(x, y, theta, p):
     likeli = float((1/pref)*np.exp(-arg))
 
     return likeli
+#
+# def ln_likelihood(x, y, theta, p):
+#     [n, k] = x.shape
+#
+#     Rmat = R(x, theta, p)
+#
+#     # if np.linalg.matrix_rank(Rmat)<n:
+#     #     return 1e2
+#     # else:
+#     # Rinv = np.linalg.inv(Rmat)
+#     try:
+#         L = np.linalg.cholesky(Rmat)
+#         Linv = np.linalg.inv(L)
+#         Rinv = np.matmul(Linv.T, Linv)
+#
+#         onevec = np.ones((n, 1))
+#         mu = mu_estimate(y, Rinv)
+#         muvec = onevec*mu
+#         sigma2 = sigma2_estimate(y, mu, Rinv)
+#
+#         t3 = 1/(2*sigma2)*np.matmul((y-muvec).T, np.matmul(Rinv, (y-muvec)))
+#
+#         return -(float(0.5*n*np.log(sigma2) + 0.5*np.log(np.linalg.det(Rmat)) + t3))
+#     except:
+#
+#         return np.nan
 
 def conc_ln_likelihood(x, y, theta, p):
     [n, k] = x.shape
 
     Rmat = R(x, theta, p)
-    Rmat = 0.5*(Rmat + Rmat.T)
 
-    # if np.linalg.matrix_rank(Rmat)<n:
-    #     return 1e2
-    # else:
-    Rinv = np.linalg.inv(Rmat)
+    try:
+        L = np.linalg.cholesky(Rmat)
+        Linv = np.linalg.inv(L)
+        Rinv = np.matmul(Linv.T, Linv)
 
-    # onevec = np.ones((n, 1))
-    mu = mu_estimate(y, Rinv)
-    # muvec = onevec*mu
+        # onevec = np.ones((n, 1))7
+        mu = mu_estimate(y, Rinv)
+        # muvec = onevec*mu
+        sigma2 = sigma2_estimate(y, mu, Rinv)
 
-    sigma2 = sigma2_estimate(y, mu, Rinv)
+        return -(float(0.5*n*np.log(sigma2) + 0.5*np.log(np.linalg.det(Rmat))))
+    except:
+        return np.nan
 
-    l = float(0.5*n*np.log(sigma2) + 0.5*np.log(np.linalg.det(Rmat)))
-    if np.isnan(l) or np.isinf(l):
-        L = 0
-    else:
-        L = l
-    return L
-
-    # pref = (2*np.pi)**(n/2)*(sigma2)**(n/2)*np.abs(np.linalg.det(Rmat))**(0.5)
-    # arg = np.matmul((y - muvec).T, np.matmul(Rinv, (y - muvec)))/(2*sigma2)
-    # likeli = float((1/pref)*np.exp(-arg))
 
 # Prediction - the whole point of this method
-def predictor(xs, x, y, theta, p, mu, sigma2, Rinv):
+def predictor_clean(xs, x, y, theta=None, p=None, mu=None, sigma2=None,
+        Rinv=None, R=None):
+    """Temporary: Better interface to predictor function
+
+    Can be called with keyword arguments OR with the output of either
+    of the stochastic model solver functions:
+
+    yp, ep = predictor_clean(xs, x, y, **stoch_model)
+
+    OR
+
+    yp, ep = predictor_clean(xs, x, y, theta=theta, p=p, mu=mu, ...)
+
+    Note that R is not necessary, but is there to avoid errors when using
+    the first usage pattern
+    """
+    return predictor(xs, x, y, theta, p, mu, sigma2, Rinv)
+
+
+def predictor(xs, x, y, theta=None, p=None, mu=None, sigma2=None,
+        Rinv=None, R=None):
     """Calculated predicted y value and standard error.
 
     Dimensions work the same as in function likelihood, where xs is shape
     (1, k)
+
+    Can be called with keyword arguments OR with the output of either
+    of the stochastic model solver functions:
+
+    yp, ep = predictor_clean(xs, x, y, **stoch_model)
+
+    OR
+
+    yp, ep = predictor_clean(xs, x, y, theta=theta, p=p, mu=mu, ...)
+
+    Note that R is not necessary, but is there to avoid errors when using
+    the first usage pattern
+
+    NOTE: It is NOT recommended to use the ordering of the keyword
+    arguments, e.g.
+        yp, ep = predictor(xs, x, y, theta, p, mu, sigma2, Rinv)
+    But this is allowed because python and for backwards compatibility
     """
     n = Rinv.shape[0]
     r = np.zeros((n, 1))
@@ -161,11 +217,18 @@ def solve_stochastic_model(x, y, p=2, x0=10, **kwargs):
     # p = 2 # Enforce this for now
     # objective = lambda theta: -np.log(np.abs(likelihood(x, y, theta, p)))
     k = x.shape[1]
+
+    cons = ({'type': 'ineq', 'fun':lambda x: x})
+
+    bnds_theta = [(0, None) for m in range(k)]
+    bnds = bnds_theta
     # bnds = [(0, None) for m in range(k)]
     # cons = ({'type': 'ineq', 'fun':lambda x: x})
-    objective = lambda theta: conc_ln_likelihood(x, y, theta, p)
+    objective = lambda theta: -conc_ln_likelihood(x, y, theta, p)
+    # objective = lambda theta: -ln_likelihood(x, y, theta, p)
     # objective = lambda theta: -n/2*np.log(
-    minimize_res = scipy.optimize.minimize(objective, x0,**kwargs)
+    minimize_res = scipy.optimize.minimize(objective, x0,
+        bounds=bnds, constraints=cons, **kwargs)
     print(minimize_res)
     theta_hat = minimize_res.x
 
@@ -181,11 +244,13 @@ def solve_stochastic_model(x, y, p=2, x0=10, **kwargs):
                     'theta': theta_hat,
                     'p': p,
                     'R':R_hat,
+                    'Rinv': np.linalg.inv(R_hat)
                     }
 
     return stoch_model
 
-def solve_full_stochastic_model(x, y, x0=[1, 1], **kwargs):
+def solve_full_stochastic_model(x, y, x0=[1, 2],
+    theta_bounds=(0, np.Inf), **kwargs):
     """Solve stochastic model given data (x, y).
 
     Uses scipy.optimize.minimize to minimize the concentrated
@@ -205,10 +270,10 @@ def solve_full_stochastic_model(x, y, x0=[1, 1], **kwargs):
     k = x.shape[1]
     # objective = lambda params: -np.log(np.abs(likelihood(x, y, params[:k], params[k:])))
 
-    objective = lambda params: conc_ln_likelihood(x, y, params[:k], params[k:])
-    cons = ({'type': 'ineq', 'fun':lambda x: x[1]})
+    objective = lambda params: -conc_ln_likelihood(x, y, params[:k], params[k:])
+    cons = ({'type': 'ineq', 'fun':lambda x: x})
 
-    bnds_theta = [(1e-8, None) for m in range(k)]
+    bnds_theta = [theta_bounds for m in range(k)]
     bnds_p = [(1, 2) for m in range(k)]
 
     bnds = []
@@ -234,6 +299,7 @@ def solve_full_stochastic_model(x, y, x0=[1, 1], **kwargs):
                     'theta': theta_hat,
                     'p': p,
                     'R':R_hat,
+                    'Rinv':np.linalg.inv(R_hat)
                     }
 
     return stoch_model
