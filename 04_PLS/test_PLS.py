@@ -7,14 +7,9 @@ from sklearn.metrics import mean_squared_error as mse
 
 from matplotlib import pyplot as plt
 
+# Read in dataset
 meats = pyreadr.read_r('meats.RData')
-
-# print(meats)
-
 meats = np.array(meats['meats'])
-
-print(meats)
-print(meats.shape)
 
 meats_train = meats[:130]
 meats_val = meats[130:175]
@@ -45,7 +40,7 @@ for n_comp in range(1, 101):
     fat_plot[n_comp-1] = fat_rmse
     protein_plot[n_comp-1] = protein_rmse
 
-fig, axs = plt.subplots(1,3, sharey=True)
+fig, axs = plt.subplots(1,3, sharey=True, figsize=(8, 4))
 comps = np.arange(1, 101)
 axs[0].plot(comps, water_plot)
 axs[0].set_title('Water')
@@ -60,5 +55,7 @@ axs[1].grid()
 axs[2].plot(comps, protein_plot)
 axs[2].set_title('Protein')
 axs[2].grid()
+
+fig.savefig('PLS_meats.png', dpi=600)
 
 plt.show()

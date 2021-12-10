@@ -114,9 +114,6 @@ for j in range(m):
         Eta_pc[:, j] += w_k*K[:, k]
         W_pc[j, k] = w_k
 
-print('Variance captured:')
-print(np.var(Eta_pc)/np.var(Eta))
-
 fig4, axes = plt.subplots(figsize=(8, 8), ncols=2, nrows=2)
 axes[0][0].pcolormesh(xx, yy, np.reshape(Eta[:, ind], (N, N)), vmin=0, vmax=1,
     cmap=cmocean.cm.haline)
@@ -129,38 +126,6 @@ em = axes[1][0].pcolormesh(xx, yy, Delta, vmin=-1e-3, vmax=1e-3, cmap=cmocean.cm
 axes[1][0].set_title('Residual')
 fig4.colorbar(em, ax=axes[1][1])
 
-# fig4.savefig('PCA_representation.png', dpi=600)
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Now look at Partial Least Squares (PLS)
-#
-# Xarr = np.zeros((N*N*m, 4))
-# Yarr = np.zeros((N*N*m, 1))
-# for i in range(m):
-#     Xarr[i*N*N:(i+1)*N*N, 0] = xx.flatten()
-#     Xarr[i*N*N:(i+1)*N*N, 1] = yy.flatten()
-#     Xarr[i*N*N:(i+1)*N*N, 2] = X[i, 0]
-#     Xarr[i*N*N:(i+1)*N*N, 3] = X[i, 1]
-#
-#     Yarr[i*N*N:(i+1)*N*N] = np.vstack(Eta[:, i])
-
-#
-
-#
-#
-# Xval = np.zeros((N*N*q, 4))
-# # Yval = np.zeros((N*N*q, 1))
-# Yval = np.zeros(
-# for i in range(q):
-#     alpha, beta = X_val[i]
-#     Pi = phys_model(alpha, beta)
-#     Yval[i*N*N:(i+1)*N*N] = np.vstack(Pi.flatten())
-#
-#     Xval[i*N*N:(i+1)*N*N, 0] = xx.flatten()
-#     Xval[i*N*N:(i+1)*N*N, 1] = yy.flatten()
-#     Xval[i*N*N:(i+1)*N*N, 2] = X_val[i, 0]
-#     Xval[i*N*N:(i+1)*N*N, 3] = X_val[i, 1]
-#
 
 X_pls = np.zeros((m, 2+2*N*N))
 X_pls[:, :2] = X
@@ -179,10 +144,11 @@ for j in range(len(n_comps)):
     # print(Eta.shape)
     rmse_plot[j] = np.sqrt(mse(Eta.T, preds))
 
-#
-print(rmse_plot)
 fig, ax = plt.subplots()
 ax.semilogy(n_comps, (rmse_plot))
+ax.set_xlabel('Number of PLS components')
+ax.set_ylabel('RMSE')
+fig.savefig('PLS_simulator_RMSE.png', dpi=600)
 
 Xarr = X
 Yarr = Eta.T
@@ -192,25 +158,23 @@ X_val = np.zeros((q, 2+2*N*N))
 X_val[:, :2] = pyDOE.lhs(2, samples=q, criterion='cm', iterations=250)
 X_val[:, 2:] = X_pls[:q, 2:]
 
-i_val = 10
+i_val = 6
 
 plsr = sklearn.cross_decomposition.PLSRegression(n_components=2, scale=True)
 plsr.fit(X_pls, Eta.T)
 pred = plsr.predict(X_val)
 # print(pred.shape)
 pred_val = pred[i_val]
-print(pred_val)
 
-fig, ax = plt.subplots()
-ax.pcolormesh(xx, yy, pred_val.reshape((N, N)))
-#
-# Y_plot_arr = pred[i_val*N*N:(i_val+1)*N*N]
-# Y_plot_arr = Y_plot_arr.reshape((N, N))
-#
-# fig, ax = plt.subplots()
-# ax.pcolormesh(xx, yy, Y_plot_arr)
-#
-#
-#
+fig, ax = plt.subplots(ncols=3, figsize=(8, 3), sharey=True)
+ax[0].pcolormesh(xx, yy, np.reshape(Eta[:, ind], (N, N)))
+ax[1].pcolormesh(xx, yy, np.reshape(Eta_pc[:,ind],(N,N)))
+ax[-1].pcolormesh(xx, yy, pred_val.reshape((N, N)))
+
+ax[0].set_title('Exact')
+ax[1].set_title('PCA')
+ax[2].set_title('PLS')
+
+fig.savefig('PLS_simulator.png', dpi=600)
 
 plt.show()
